@@ -195,6 +195,81 @@ def download_img(img_url):
     except:
         return
 
+
+def synth(z):
+    if is_gumbel:
+        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embed.weight).movedim(3, 1)
+    else:
+        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(3, 1)
+    
+    return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
+
+def add_xmp_data(nombrefichero):
+    imagen = ImgTag(filename=nombrefichero)
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'creator', 'VQGAN+CLIP', {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    if args.prompts:
+        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', " | ".join(args.prompts), {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    else:
+        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', 'None', {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'i', str(i), {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'model', nombre_modelo, {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'seed',str(seed) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'input_images',str(input_images) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    #for frases in args.prompts:
+    #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.close()
+
+def add_stegano_data(filename):
+    data = {
+        "title": " | ".join(args.prompts) if args.prompts else None,
+        "notebook": "VQGAN+CLIP",
+        "i": i,
+        "model": nombre_modelo,
+        "seed": str(seed),
+        "input_images": input_images
+    }
+    lsb.hide(filename, json.dumps(data)).save(filename)
+
+@torch.no_grad()
+def checkin(i, losses):
+    losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
+    print(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
+    out = synth(z)
+    TF.to_pil_image(out[0].cpu()).save('progress.png')
+    add_stegano_data('progress.png')
+    add_xmp_data('progress.png')
+
+def ascend_txt():
+    global i
+    out = synth(z)
+    iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
+
+    result = []
+
+    if args.init_weight:
+        result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
+
+    for prompt in pMs:
+        result.append(prompt(iii))
+    img = np.array(out.mul(255).clamp(0, 255)[0].cpu().detach().numpy().astype(np.uint8))[:,:,:]
+    img = np.transpose(img, (1, 2, 0))
+    filename = f"steps/{i:04}.png"
+    imageio.imwrite(filename, np.array(img))
+    add_stegano_data(filename)
+    add_xmp_data(filename)
+    return result
+
+def train(i):
+    opt.zero_grad()
+    lossAll = ascend_txt()
+    if i % args.display_freq == 0:
+        checkin(i, lossAll)
+    loss = sum(lossAll)
+    loss.backward()
+    opt.step()
+    with torch.no_grad():
+        z.copy_(z.maximum(z_min).minimum(z_max))
+
 #@title 4) Art Generator Parameters
 text = open("word.txt").read() #@param {type:"string"}
 textos = text
@@ -339,81 +414,6 @@ for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
     gen = torch.Generator().manual_seed(seed)
     embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
     pMs.append(Prompt(embed, weight).to(device))
-
-def synth(z):
-    if is_gumbel:
-        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embed.weight).movedim(3, 1)
-    else:
-        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(3, 1)
-    
-    return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
-
-def add_xmp_data(nombrefichero):
-    imagen = ImgTag(filename=nombrefichero)
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'creator', 'VQGAN+CLIP', {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    if args.prompts:
-        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', " | ".join(args.prompts), {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    else:
-        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', 'None', {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'i', str(i), {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'model', nombre_modelo, {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'seed',str(seed) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'input_images',str(input_images) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    #for frases in args.prompts:
-    #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.close()
-
-def add_stegano_data(filename):
-    data = {
-        "title": " | ".join(args.prompts) if args.prompts else None,
-        "notebook": "VQGAN+CLIP",
-        "i": i,
-        "model": nombre_modelo,
-        "seed": str(seed),
-        "input_images": input_images
-    }
-    lsb.hide(filename, json.dumps(data)).save(filename)
-
-@torch.no_grad()
-def checkin(i, losses):
-    losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
-    print(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
-    out = synth(z)
-    TF.to_pil_image(out[0].cpu()).save('progress.png')
-    add_stegano_data('progress.png')
-    add_xmp_data('progress.png')
-
-def ascend_txt():
-    global i
-    out = synth(z)
-    iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
-
-    result = []
-
-    if args.init_weight:
-        result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
-
-    for prompt in pMs:
-        result.append(prompt(iii))
-    img = np.array(out.mul(255).clamp(0, 255)[0].cpu().detach().numpy().astype(np.uint8))[:,:,:]
-    img = np.transpose(img, (1, 2, 0))
-    filename = f"steps/{i:04}.png"
-    imageio.imwrite(filename, np.array(img))
-    add_stegano_data(filename)
-    add_xmp_data(filename)
-    return result
-
-def train(i):
-    opt.zero_grad()
-    lossAll = ascend_txt()
-    if i % args.display_freq == 0:
-        checkin(i, lossAll)
-    loss = sum(lossAll)
-    loss.backward()
-    opt.step()
-    with torch.no_grad():
-        z.copy_(z.maximum(z_min).minimum(z_max))
-
 i = 0
 try:
     while True:
