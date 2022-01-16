@@ -9,7 +9,7 @@ mkdir AIImageGenerator
 Step 3:
 Make virtual env
 cd AIImageGenerator
-virtualenv -p /usr/bin/python3 .p
+virtualenv -p /usr/bin/python3 .
 
 Step 4:
 Activate virtualenv
@@ -29,8 +29,14 @@ sudo apt install exempi
 pip install python-xmp-toolkit imgtag
 pip uninstall pillow
 pip install pillow==7.1.2
+pip install pillow==9.0.0
 pip install imageio-ffmpeg
 
 Step 7:
 Make steps dir
 mkdir steps
+
+Step 8:
+Download pretrained models
+curl -L -o vqgan_imagenet_f16_16384.yaml -C - 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' #ImageNet 16384
+curl -L -o vqgan_imagenet_f16_16384.ckpt -C - 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1' #ImageNet 16384
