@@ -40,3 +40,10 @@ Step 8:
 Download pretrained models
 curl -L -o vqgan_imagenet_f16_16384.yaml -C - 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' #ImageNet 16384
 curl -L -o vqgan_imagenet_f16_16384.ckpt -C - 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1' #ImageNet 16384
+
+Step 9:
+Copy run.py file
+Now you have to copy the run.py file in this repo to your project folder
+
+Step 10:
+Run the python file and have fun
