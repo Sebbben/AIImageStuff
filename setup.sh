@@ -1,44 +1,12 @@
-Step 1:
-Install virtual env
-sudo apt install virtualenv
-
-Step 2:
-Make folder for the project
+sudo apt install virtualenv exempi
 mkdir AIImageGenerator
-
-Step 3:
-Make virtual env
 cd AIImageGenerator
 virtualenv -p /usr/bin/python3 .
-
-Step 4:
-Activate virtualenv
 cd bin
 source activate
-cd ..
-
-Step 5:
-Download nessesary git repos
-git clone https://github.com/openai/CLIP
+cd ..git clone https://github.com/openai/CLIP
 git clone https://github.com/CompVis/taming-transformers
-
-Step 6:
-Download python packages
 pip install ftfy regex omegaconf pytorch-lightning kornia einops wget stegano torchvision imageio python-xmp-toolkit imgtag pillow==9.0.0 imageio-ffmpeg
-
-
-Step 7:
-Make steps dir
 mkdir steps
-
-Step 8:
-Download pretrained models
 curl -L -o vqgan_imagenet_f16_16384.yaml -C - 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1'
 curl -L -o vqgan_imagenet_f16_16384.ckpt -C - 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1'
-
-Step 9:
-Copy run.py file
-Now you have to copy the run.py file in this repo to your project folder
-
-Step 10:
-Run the python file and have fun

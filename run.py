@@ -196,7 +196,7 @@ def download_img(img_url):
         return
 
 #@title 4) Art Generator Parameters
-text = "the ai whisperer" #@param {type:"string"}
+text = open("word.txt").read() #@param {type:"string"}
 textos = text
 height =  500#@param {type:"number"}
 width =  500#@param {type:"number"}
@@ -377,7 +377,7 @@ def add_stegano_data(filename):
 @torch.no_grad()
 def checkin(i, losses):
     losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
-    tqdm.write(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
+    print(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
     out = synth(z)
     TF.to_pil_image(out[0].cpu()).save('progress.png')
     add_stegano_data('progress.png')
