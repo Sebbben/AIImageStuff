@@ -9,7 +9,7 @@ mkdir AIImageGenerator
 Step 3:
 Make virtual env
 cd AIImageGenerator
-virtualenv -p /usr/bin/python3
+virtualenv -p /usr/bin/python3 .p
 
 Step 4:
 Activate virtualenv
@@ -24,7 +24,7 @@ git clone https://github.com/CompVis/taming-transformers
 
 Step 6:
 Download python packages
-pip install ftfy regex tqdm omegaconf pytorch-lightning kornia einops wget stegano
+pip install ftfy regex omegaconf pytorch-lightning kornia einops wget stegano
 sudo apt install exempi
 pip install python-xmp-toolkit imgtag
 pip uninstall pillow
