@@ -1,12 +1,9 @@
 import argparse
 import math
-from pathlib import Path
-import sys
+import sys, os
  
 sys.path.append('./taming-transformers')
-from base64 import b64encode
 from omegaconf import OmegaConf
-from PIL import Image
 from taming.models import cond_transformer, vqgan
 import torch
 from torch import nn, optim
@@ -19,11 +16,7 @@ import kornia.augmentation as K
 import numpy as np
 import imageio
 from PIL import ImageFile, Image
-from imgtag import ImgTag    # metadatos 
-from libxmp import *         # metadatos
-import libxmp                # metadatos
-from stegano import lsb
-import json
+from libxmp import *         
 ImageFile.LOAD_TRUNCATED_IMAGES = True
  
 def sinc(x):
@@ -135,7 +128,7 @@ class MakeCutouts(nn.Module):
         self.cut_pow = cut_pow
         self.augs = nn.Sequential(
             K.RandomHorizontalFlip(p=0.5),
-            # K.RandomSolarize(0.01, 0.01, p=0.7),
+            
             K.RandomSharpness(0.3,p=0.4),
             K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode='border'),
             K.RandomPerspective(0.2,p=0.4),
@@ -197,38 +190,10 @@ def download_img(img_url):
 
 
 def synth(z):
-    if is_gumbel:
-        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embed.weight).movedim(3, 1)
-    else:
-        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(3, 1)
+    z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(3, 1)
     
     return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
-def add_xmp_data(nombrefichero):
-    imagen = ImgTag(filename=nombrefichero)
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'creator', 'VQGAN+CLIP', {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    if args.prompts:
-        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', " | ".join(args.prompts), {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    else:
-        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', 'None', {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'i', str(i), {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'model', nombre_modelo, {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'seed',str(seed) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'input_images',str(input_images) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    #for frases in args.prompts:
-    #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.close()
-
-def add_stegano_data(filename):
-    data = {
-        "title": " | ".join(args.prompts) if args.prompts else None,
-        "notebook": "VQGAN+CLIP",
-        "i": i,
-        "model": nombre_modelo,
-        "seed": str(seed),
-        "input_images": input_images
-    }
-    lsb.hide(filename, json.dumps(data)).save(filename)
 
 @torch.no_grad()
 def checkin(i, losses):
@@ -236,8 +201,7 @@ def checkin(i, losses):
     print(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
     out = synth(z)
     TF.to_pil_image(out[0].cpu()).save('progress.png')
-    add_stegano_data('progress.png')
-    add_xmp_data('progress.png')
+    TF.to_pil_image(out[0].cpu()).save(f'../generatedImages/{i//args.display_freq}.png')
 
 def ascend_txt():
     global i
@@ -255,8 +219,6 @@ def ascend_txt():
     img = np.transpose(img, (1, 2, 0))
     filename = f"steps/{i:04}.png"
     imageio.imwrite(filename, np.array(img))
-    add_stegano_data(filename)
-    add_xmp_data(filename)
     return result
 
 def train(i):
@@ -270,82 +232,82 @@ def train(i):
     with torch.no_grad():
         z.copy_(z.maximum(z_min).minimum(z_max))
 
-#@title 4) Art Generator Parameters
-text = open("word.txt").read() #@param {type:"string"}
-textos = text
-height =  500#@param {type:"number"}
-width =  500#@param {type:"number"}
-ancho=width
-alto=height
-model = "vqgan_imagenet_f16_16384" #@param ["vqgan_imagenet_f16_16384", "vqgan_imagenet_f16_1024", "wikiart_1024", "wikiart_16384", "coco", "faceshq", "sflckr", "ade20k", "ffhq", "celebahq", "gumbel_8192"]
-modelo=model
-interval_image =  50#@param {type:"number"}
-intervalo_imagenes = interval_image
-initial_image = ""#@param {type:"string"}
-imagen_inicial= initial_image
-objective_image = ""#@param {type:"string"}
-imagenes_objetivo = objective_image
-seed = -1#@param {type:"number"}
-max_iterations = -1#@param {type:"number"}
-max_iteraciones = max_iterations
+
+if "yes" == input("Cleaning up prev images. Continue? (yes/no)"):
+    os.system("rm ../generatedImages/*")
+    os.system("rm steps/*")
+    os.system("rm progress.png")
+
+settingsTxt = open("settings.txt").read()
+settings = {}
+
+for line in settingsTxt.splitlines():
+    key, val = line.split(" : ")
+    if isinstance(val, int): val = int(val)
+    if val == "-1": val = -1
+    settings[key] = val
+
+text = settings["text"] 
+height =  500
+width =  500
+model = "vqgan_imagenet_f16_16384" 
+interval_image =  50
+initial_image = ""
+objective_image = ""
+seed = settings["seed"] 
+max_iterations = settings["maxIterations"] 
 input_images = ""
 
-nombres_modelos={"vqgan_imagenet_f16_16384": 'ImageNet 16384',"vqgan_imagenet_f16_1024":"ImageNet 1024", 
-                 "wikiart_1024":"WikiArt 1024", "wikiart_16384":"WikiArt 16384", "coco":"COCO-Stuff", "faceshq":"FacesHQ", "sflckr":"S-FLCKR", "ade20k":"ADE20K", "ffhq":"FFHQ", "celebahq":"CelebA-HQ", "gumbel_8192": "Gumbel 8192"}
-nombre_modelo = nombres_modelos[modelo]     
-
-if modelo == "gumbel_8192":
-    is_gumbel = True
-else:
-    is_gumbel = False
+model_name = "ImageNet 16384"   
 
 if seed == -1:
     seed = None
-if imagen_inicial == "None":
-    imagen_inicial = None
-elif imagen_inicial and imagen_inicial.lower().startswith("http"):
-    imagen_inicial = download_img(imagen_inicial)
+
+if initial_image == "None":
+    initial_image = None
+elif initial_image and initial_image.lower().startswith("http"):
+    initial_image = download_img(initial_image)
 
 
-if imagenes_objetivo == "None" or not imagenes_objetivo:
-    imagenes_objetivo = []
+if objective_image == "None" or not objective_image:
+    objective_image = []
 else:
-    imagenes_objetivo = imagenes_objetivo.split("|")
-    imagenes_objetivo = [image.strip() for image in imagenes_objetivo]
+    objective_image = objective_image.split("|")
+    objective_image = [image.strip() for image in objective_image]
 
-if imagen_inicial or imagenes_objetivo != []:
+if initial_image or objective_image != []:
     input_images = True
 
-textos = [frase.strip() for frase in textos.split("|")]
-if textos == ['']:
-    textos = []
+text = [frase.strip() for frase in text.split("|")]
+if text == ['']:
+    text = []
 
 
 args = argparse.Namespace(
-    prompts=textos,
-    image_prompts=imagenes_objetivo,
+    prompts=text,
+    image_prompts=objective_image,
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
-    size=[ancho, alto],
-    init_image=imagen_inicial,
+    size=[width, height],
+    init_image=initial_image,
     init_weight=0.,
     clip_model='ViT-B/32',
-    vqgan_config=f'{modelo}.yaml',
-    vqgan_checkpoint=f'{modelo}.ckpt',
+    vqgan_config=f'{model}.yaml',
+    vqgan_checkpoint=f'{model}.ckpt',
     step_size=0.1,
     cutn=64,
     cut_pow=1.,
-    display_freq=intervalo_imagenes,
+    display_freq=interval_image,
     seed=seed,
 )
 
-#@title 5) Run the Art Generator :)
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print('Using device:', device)
-if textos:
-    print('Using texts:', textos)
-if imagenes_objetivo:
-    print('Using image prompts:', imagenes_objetivo)
+if text:
+    print('Using texts:', text)
+if objective_image:
+    print('Using image prompts:', objective_image)
 if args.seed is None:
     seed = torch.seed()
 else:
@@ -357,26 +319,16 @@ model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
 perceptor = clip.load(args.clip_model, jit=False)[0].eval().requires_grad_(False).to(device)
 
 cut_size = perceptor.visual.input_resolution
-if is_gumbel:
-    e_dim = model.quantize.embedding_dim
-else:
-    e_dim = model.quantize.e_dim
+e_dim = model.quantize.e_dim
 
 f = 2**(model.decoder.num_resolutions - 1)
 make_cutouts = MakeCutouts(cut_size, args.cutn, cut_pow=args.cut_pow)
-if is_gumbel:
-    n_toks = model.quantize.n_embed
-else:
-    n_toks = model.quantize.n_e
+n_toks = model.quantize.n_e
 
 toksX, toksY = args.size[0] // f, args.size[1] // f
 sideX, sideY = toksX * f, toksY * f
-if is_gumbel:
-    z_min = model.quantize.embed.weight.min(dim=0).values[None, :, None, None]
-    z_max = model.quantize.embed.weight.max(dim=0).values[None, :, None, None]
-else:
-    z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
-    z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]
+z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
+z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]
 
 if args.init_image:
     pil_image = Image.open(args.init_image).convert('RGB')
@@ -384,10 +336,7 @@ if args.init_image:
     z, *_ = model.encode(TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1)
 else:
     one_hot = F.one_hot(torch.randint(n_toks, [toksY * toksX], device=device), n_toks).float()
-    if is_gumbel:
-        z = one_hot @ model.quantize.embed.weight
-    else:
-        z = one_hot @ model.quantize.embedding.weight
+    z = one_hot @ model.quantize.embedding.weight
     z = z.view([-1, toksY, toksX, e_dim]).permute(0, 3, 1, 2)
 z_orig = z.clone()
 z.requires_grad_(True)
@@ -414,11 +363,13 @@ for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
     gen = torch.Generator().manual_seed(seed)
     embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
     pMs.append(Prompt(embed, weight).to(device))
+
 i = 0
 try:
     while True:
         train(i)
-        if i == max_iteraciones:
+        if i == max_iterations:
+            
             break
         i += 1
 except KeyboardInterrupt:
